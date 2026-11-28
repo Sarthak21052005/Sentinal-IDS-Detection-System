@@ -1,4 +1,25 @@
 
+import importlib.util
+from pathlib import Path
+import threading
+
+
+def save_detected_event(event):
+    """Save a detected event using the existing event logger."""
+
+    logger_path = Path(__file__).with_name("event_logger.py")
+
+    spec = importlib.util.spec_from_file_location(
+        "event_logger",
+        logger_path
+    )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module.save_security_event(event)
+
+
 """
 SENTINAL - Detection Engine
 
@@ -8,8 +29,6 @@ Initial implementation:
 A security event is generated when an IP address previously
 observed with one MAC address is advertised with another.
 """
-
-import threading
 
 
 class DetectionEngine:
@@ -102,6 +121,20 @@ class DetectionEngine:
             return None
 
         return self.detect_arp_spoofing(packet_event)
+
+    def process_packet(self, packet_event):
+        """Detect suspicious activity and save generated events."""
+
+        security_event = self.detect_packet(packet_event)
+
+        if security_event is None:
+            return None
+
+        event_id = save_detected_event(security_event)
+
+        security_event["database_id"] = event_id
+
+        return security_event
 
 
 # Compatibility function for simple module-level usage.

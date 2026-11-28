@@ -2,10 +2,20 @@
 import argparse
 import json
 import logging
+import sys
+from pathlib import Path
 
 from scapy.all import sniff, get_if_list
 
-from .packet_processor import process_packet
+# Add the project root and detection-engine directory to Python's import path.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DETECTION_ENGINE_DIR = Path(__file__).resolve().parent
+
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(DETECTION_ENGINE_DIR))
+
+from packet_processor import process_packet
+from detection_engine import DetectionEngine
 
 
 logging.basicConfig(
@@ -20,9 +30,10 @@ class PacketCapture:
     def __init__(self, interface="enp0s8"):
         self.interface = interface
         self.packet_count = 0
+        self.detection_engine = DetectionEngine()
 
     def process_captured_packet(self, packet):
-        """Process and display a captured packet."""
+        """Process a captured packet and check it for security threats."""
 
         event = process_packet(packet)
 
@@ -38,6 +49,25 @@ class PacketCapture:
             event["src_ip"],
             event["dst_ip"],
         )
+
+        # Send normalized packet metadata to the detection engine.
+        try:
+            security_event = self.detection_engine.process_packet(event)
+
+            if security_event is not None:
+                logger.warning(
+                    "THREAT DETECTED | %s | Severity: %s | Score: %s | Database ID: %s",
+                    security_event["event_type"],
+                    security_event["severity"],
+                    security_event["threat_score"],
+                    security_event.get("database_id"),
+                )
+
+        except Exception:
+            logger.exception(
+                "Detection or database logging failed for packet #%s",
+                self.packet_count
+            )
 
         print(json.dumps(event, indent=2))
 
